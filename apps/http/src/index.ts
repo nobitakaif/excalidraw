@@ -127,6 +127,7 @@ app.post("/room",  middleware,async(req,res)=>{
             id : req.userId,
             admin : room.admin,
             slug : room.slug,
+            roomId : room.id,
             msg : "alright"
         })
         return 
@@ -137,6 +138,23 @@ app.post("/room",  middleware,async(req,res)=>{
         })
     }
     
+})
+//  make this autheticated
+app.get("/chat/:roomId", async (req,res)=>{
+
+    const roomId = Number(req.params.roomId)
+    const message = await client.chat.findMany({
+        where:{
+            roomId : roomId
+        },
+        orderBy:{
+            id : 'desc'
+        },
+        take : 50
+    }) 
+    res.status(200).json({
+        msg : message
+    })
 })
 app.listen(8000,()=>{
     console.log("server is running on port 8000")
