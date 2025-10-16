@@ -1,6 +1,8 @@
 import { WebSocketServer } from "ws"
+import type { WebSocket } from "ws";
 import jwt from "jsonwebtoken"
 import dotenv from 'dotenv';
+import { client } from "@repo/db/client"
 dotenv.config({ path: '../../.env' });
 
 const wss = new WebSocketServer({ port : 8080},()=>{
@@ -14,31 +16,36 @@ function checkUser (token : string): string | null{
         throw new Error("JWT SECRET is not present")
     }
     // console.log(token)
-    const decodedToken = jwt.verify(token , JWT_SECRET)
-    if(typeof decodedToken == 'string'){
+    try{
+        const decodedToken = jwt.verify(token , JWT_SECRET)
+    
+        if(typeof decodedToken == 'string'){
+            console.log("decodedToken ",decodedToken)
+            return null;
+        }
         console.log("decodedToken ",decodedToken)
-        return null;
-    }
-    console.log("decodedToken ",decodedToken)
-    if(!decodedToken){
-        console.log("fuuckkkkkkkkkkkkkkkkkkkkkkkkkkkk")
+        if(!decodedToken){
+            return null 
+        }
+        return decodedToken.token;
+    }catch(e){
         return null 
     }
-    return decodedToken.token;
+    
 }
 
 interface User{
-    ws : WebSocket,
+    socketId : WebSocket,
     rooms  : string[], // ['math', 'english'] 
     userId : string
 }
 
-const user :User[]  = []
-wss.on('connection', function connection(ws :any, req : any){
+const users :User[]  = []
+wss.on('connection', function connection(ws , req ){
     const url = req.url
     if(!url){
         console.log("url is not present ")
-        ws.close('url is not present')
+        ws.close()
         return
     }
     const splitUrl = new URLSearchParams(url.split('?')[1])
@@ -47,18 +54,72 @@ wss.on('connection', function connection(ws :any, req : any){
     // console.log("token " , token)
     const isUser = checkUser(token)
     if(!isUser){
-        ws.close('disconnected')
+        ws.close()
         return 
     } 
+    console.log(isUser)
     // pushing the user into global var User for maintain all the user
-    user.push({
+    users.push({
         userId : isUser,
-        ws ,
+        socketId : ws ,
         rooms : []
     })
     
-    ws.on('message',function (data : any){
+    ws.on('message',async function (data){
         // data always be string so we need to parsed into obj
+        // we will send data like ->
+        // {
+        //     type : "join_room" | "leave_room" | "chat",
+        //     roomId : "22233" ,
+        //     message : "Hii everyone"
+        // }
+        const parsedObj = JSON.parse(data as unknown as string )
+        if(parsedObj.type == "join_room"){
+            // TODO => this roomId exisit in our db or not then procce otherwise not 
+            const user = users.find( u => u.socketId === ws) // check the current user in the global Users array
+            user?.rooms.push(parsedObj.roomId) // storing roomid into user.room[] 
+            ws.send("congratulation you're successfully joined room ", parsedObj.roomId)
+        }
+
+        if(parsedObj.type === "leave_room"){
+            const user = users.find( u => u.socketId === ws)
+            if(!user){
+                return 
+            }
+            // user.rooms = user?.rooms.filter(r => r === parsedObj.roomId) 
+            for(let i = 0 ; i<user.rooms.length ; i++ ){
+                if(user.rooms[i] == parsedObj.roomId){
+                    user.rooms[i] = ''
+                    break
+                }
+            }
+            ws.send("you're leaving this room ", parsedObj.roomId)
+            // return
+        }
+        // TODO : => add messages into redis queue first then broadcast to everyone and the publisher will pick the ele from the queue and put into the db 
+
+
+        if(parsedObj.type == "chat"){
+            const roomId = parsedObj.roomId
+            const message = parsedObj.message
+            // sending msg to everyone who is connected to the same roomId
+            await client.chat.create({
+                data : {
+                    message,
+                    roomId : Number(roomId),
+                    userId : isUser
+                }
+            })
+            users.forEach(user =>{
+                if(user.rooms.find(r => parsedObj.roomId)){
+                    user.socketId.send(JSON.stringify({
+                        type : "chat",
+                        message : message,
+                        roomId : roomId
+                    }))
+                }
+            })
+        }
     })
 })
 
