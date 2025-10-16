@@ -5,9 +5,11 @@
   "main": "index.js",
   "scripts": {
     "build": "tsc -b",
-    "dev": "npm run build && node ./dist/index"
+    "dev": "npm run build && node ./dist/index.js"
   },
   "devDependencies": {
+    "@repo/commons": "*",
+    "@repo/db": "*",
     "@repo/typescript-config": "*"
   },
   "keywords": [],
@@ -15,7 +17,9 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/express": "^5.0.3",
+    "bcrypt": "^6.0.0",
     "express": "^5.1.0"
   }
 }
